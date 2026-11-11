@@ -74,18 +74,31 @@ const getFallbackEndpointSchema = <TSchema>(
 //   [EModelEndpoint.google]: createGoogleSchema,
 // };
 
+/**
+ * laintas-librechat fork: built-in vendor endpoints are permanently disabled.
+ *
+ * Upstream enables every built-in endpoint and lets the `ENDPOINTS` env var
+ * narrow the list. This fork ships exactly one model backend — the Laintas
+ * custom endpoint — so vendor endpoints are filtered out here, at the single
+ * choke point that the default endpoint config and the config ordering both
+ * read from. As a result, no env var, API key, or config file can resurrect
+ * a vendor endpoint at runtime. The `agents` endpoint stays available: it is
+ * not a vendor, it runs on whichever model endpoints remain (here, only
+ * Laintas). See FORK.md.
+ */
+const forkVendorEndpoints: string[] = [
+  EModelEndpoint.openAI,
+  EModelEndpoint.assistants,
+  EModelEndpoint.azureAssistants,
+  EModelEndpoint.azureOpenAI,
+  EModelEndpoint.google,
+  EModelEndpoint.anthropic,
+  EModelEndpoint.bedrock,
+];
+
 /** Get the enabled endpoints from the `ENDPOINTS` environment variable */
 export function getEnabledEndpoints() {
-  const defaultEndpoints: string[] = [
-    EModelEndpoint.openAI,
-    EModelEndpoint.agents,
-    EModelEndpoint.assistants,
-    EModelEndpoint.azureAssistants,
-    EModelEndpoint.azureOpenAI,
-    EModelEndpoint.google,
-    EModelEndpoint.anthropic,
-    EModelEndpoint.bedrock,
-  ];
+  const defaultEndpoints: string[] = [EModelEndpoint.agents, EModelEndpoint.custom];
 
   const endpointsEnv = process.env.ENDPOINTS ?? '';
   let enabledEndpoints = defaultEndpoints;
@@ -93,7 +106,13 @@ export function getEnabledEndpoints() {
     enabledEndpoints = endpointsEnv
       .split(',')
       .filter((endpoint) => endpoint.trim())
-      .map((endpoint) => endpoint.trim());
+      .map((endpoint) => endpoint.trim())
+      .filter((endpoint) => !forkVendorEndpoints.includes(endpoint));
+    for (const required of defaultEndpoints) {
+      if (!enabledEndpoints.includes(required)) {
+        enabledEndpoints.push(required);
+      }
+    }
   }
   return enabledEndpoints;
 }
