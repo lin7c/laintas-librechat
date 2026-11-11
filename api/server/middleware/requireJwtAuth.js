@@ -9,12 +9,36 @@ const {
   maybeRefreshCloudFrontAuthCookiesMiddleware,
   recordRumProxyRequest,
   getValidOpenIdReuseUserId,
+  resolveStoredOpenIDTokens,
 } = require('@librechat/api');
 
 const hasPassportStrategy = (strategy) =>
   typeof passport._strategy === 'function' && passport._strategy(strategy) != null;
 
 const getAuthenticatedUserId = (user) => user?.id?.toString?.() ?? user?._id?.toString?.();
+
+/**
+ * Rebuilds `user.federatedTokens` from the stores a completed OpenID login
+ * left behind (express session, then the fallback token cookies), for
+ * deployments without OPENID_REUSE_TOKENS — notably providers that issue
+ * no refresh token, whose logins cannot use the reuse publication path.
+ * The `openidJwt` strategy performs the same rebuild when reuse is on;
+ * this covers the plain `jwt` strategy so `{{LIBRECHAT_OPENID_*}}` header
+ * templates resolve identically on both paths.
+ */
+const attachStoredOpenIDTokens = (req, user) => {
+  if (!user || user.provider !== 'openid' || user.federatedTokens) {
+    return;
+  }
+  const parsedCookies = req.headers.cookie ? cookies.parse(req.headers.cookie) : {};
+  const stored = resolveStoredOpenIDTokens({
+    sessionTokens: req.session?.openidTokens,
+    cookies: parsedCookies,
+  });
+  if (stored) {
+    user.federatedTokens = stored;
+  }
+};
 const refreshCloudFrontCookies =
   maybeRefreshCloudFrontAuthCookiesMiddleware ?? ((_req, _res, next) => next());
 const ACCOUNT_DELETION_CODE = 'ACCOUNT_DELETION_IN_PROGRESS';
@@ -182,6 +206,7 @@ const requireJwtAuth = (req, res, next) => {
         logAuthenticationFailure({ strategy, info, status: 401, err });
         return res.status(401).json({ message: 'Unauthorized' });
       }
+      attachStoredOpenIDTokens(req, user);
       req.user = user;
       req.authStrategy = strategy;
       logFallbackSuccess(strategy);

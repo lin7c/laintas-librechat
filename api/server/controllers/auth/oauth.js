@@ -7,7 +7,7 @@ const {
   generateAdminExchangeCode,
 } = require('@librechat/api');
 const { syncUserEntraGroupMemberships } = require('~/server/services/PermissionService');
-const { setAuthTokens } = require('~/server/services/AuthService');
+const { setAuthTokens, storeOpenIDLoginTokens } = require('~/server/services/AuthService');
 const { sendOpenIDAuthResponse } = require('~/server/services/OpenIDRefreshRecovery');
 const getLogStores = require('~/cache/getLogStores');
 const { checkBan } = require('~/server/middleware');
@@ -88,6 +88,19 @@ function createOAuthHandler(redirectUri = domains.client) {
           res,
         });
       } else {
+        /** Without token reuse, keep the IdP tokenset reachable for
+         *  `{{LIBRECHAT_OPENID_*}}` header resolution (model fetches and
+         *  chat requests to endpoints configured with the user's token).
+         *  Providers that issue no refresh token cannot use the reuse
+         *  publication path; this stores the login artifacts it needs. */
+        if (req.user.provider === 'openid' && req.user.tokenset?.access_token) {
+          storeOpenIDLoginTokens(req.user.tokenset, req, res, {
+            userId: req.user._id?.toString(),
+            openidSubject: req.user.openidId,
+            tenantId: req.user.tenantId,
+            openidIssuer: req.user.openidIssuer,
+          });
+        }
         await setAuthTokens(req.user._id, res, null, req);
         if (
           req.user.provider === 'openid' &&

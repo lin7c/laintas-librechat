@@ -25,6 +25,7 @@ const {
   normalizeExpiresIn,
   createOpenIDSessionIdentity,
   resolveAppConfigForUser,
+  buildOpenIDLoginTokenArtifacts,
 } = require('@librechat/api');
 const {
   findUser,
@@ -951,6 +952,52 @@ const storeOpenIDSession = async (userId, refreshToken, tenantId, previousRefres
 };
 
 /**
+ * Persists the IdP tokenset of a standard (non-OPENID_REUSE_TOKENS) OpenID
+ * login, so `{{LIBRECHAT_OPENID_*}}` header templates stay resolvable for
+ * the session. The reuse publication path cannot serve providers that
+ * issue no refresh token; see `buildOpenIDLoginTokenArtifacts` in
+ * `@librechat/api` for the full rationale. Storage failures are logged,
+ * never fatal: the login itself proceeds exactly as before.
+ *
+ * @param {Object} tokenset - The IdP token endpoint response
+ * @param {Object} req - Express request (session target)
+ * @param {Object} res - Express response (cookie target)
+ * @param {Object} [identity] - Session binding for the stored tokens
+ * @param {string} [identity.userId]
+ * @param {string} [identity.openidSubject]
+ * @param {string} [identity.tenantId]
+ * @param {string} [identity.openidIssuer]
+ * @returns {boolean} Whether token artifacts were stored
+ */
+const storeOpenIDLoginTokens = (tokenset, req, res, identity = {}) => {
+  try {
+    const artifacts = buildOpenIDLoginTokenArtifacts({
+      tokenset,
+      nowMs: Date.now(),
+      fallbackExpiryMs: math(process.env.REFRESH_TOKEN_EXPIRY, DEFAULT_REFRESH_TOKEN_EXPIRY),
+      secureCookie: shouldUseSecureCookie(),
+      userId: identity.userId,
+      openidSubject: identity.openidSubject,
+      tenantId: identity.tenantId,
+      openidIssuer: identity.openidIssuer,
+    });
+    if (!artifacts) {
+      return false;
+    }
+    if (req.session) {
+      req.session.openidTokens = artifacts.sessionTokens;
+    }
+    for (const cookie of artifacts.cookies) {
+      res.cookie(cookie.name, cookie.value, cookie.options);
+    }
+    return true;
+  } catch (error) {
+    logger.error('[storeOpenIDLoginTokens] Failed to store OpenID login tokens:', error);
+    return false;
+  }
+};
+
+/**
  * Resend Verification Email
  * @param {Object} req
  * @param {Object} req.body
@@ -1020,6 +1067,7 @@ module.exports = {
   clearOpenIDAuthTokens,
   getOpenIDAppAuthToken,
   setOpenIDAuthTokens,
+  storeOpenIDLoginTokens,
   storeOpenIDSession,
   setCloudFrontAuthCookies,
   requestPasswordReset,

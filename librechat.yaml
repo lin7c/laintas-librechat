@@ -24,9 +24,12 @@ endpoints:
     # request, to the access token the signed-in user received from the
     # Laintas OpenID provider (accounts.laintas.com), and is used both for
     # chat requests and for fetching the model list from /v1/models. The
-    # static apiKey value is only a non-empty placeholder required by the
-    # endpoint schema; it is never the credential used against Laintas
-    # (the resolved Authorization header takes precedence upstream).
+    # token reaches the request through this fork's login-token bridge
+    # (OPENID_REUSE_TOKENS stays off: the Laintas IdP issues no refresh
+    # tokens — see FORK.md, "Login-token bridge"). The static apiKey
+    # value is only a non-empty placeholder required by the endpoint
+    # schema; it is never the credential used against Laintas (the
+    # resolved Authorization header takes precedence upstream).
     - name: 'Laintas'
       apiKey: 'laintas'
       baseURL: 'https://laintas.com/v1'

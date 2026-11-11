@@ -304,6 +304,59 @@ export function processOpenIDPlaceholders(
   return processedValue;
 }
 
+/** Subset of the express-session OpenID token shape read here; the full
+ *  contract lives with `setOpenIDAuthTokens` in `./auth/openid/session`. */
+export interface StoredOpenIDSessionTokens {
+  accessToken?: string;
+  idToken?: string;
+  accessTokenExpiresAt?: number;
+}
+
+/** Best-effort `exp` claim (unix seconds) of a JWT; undefined for opaque
+ *  tokens or unparseable payloads. Advisory only, never verified. */
+export function decodeJwtExpirySeconds(token?: string | null): number | undefined {
+  if (!token) {
+    return undefined;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+    return typeof payload?.exp === 'number' ? payload.exp : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Rebuilds the `OIDCTokens` snapshot header resolution consumes
+ * (`user.federatedTokens`) from the token stores a completed OpenID login
+ * leaves behind: the express-session tokens first, then the
+ * `openid_access_token` / `openid_id_token` cookies — the same precedence
+ * and fallback `openIdJwtStrategy` applies on the OPENID_REUSE_TOKENS
+ * path. The reuse publication machinery requires an IdP refresh token,
+ * so deployments whose provider issues none (no `offline_access`) keep
+ * reuse off and rely on this bridge instead (see
+ * `buildOpenIDLoginTokenArtifacts`). Returns undefined when no access
+ * token is stored.
+ */
+export function resolveStoredOpenIDTokens(source: {
+  sessionTokens?: StoredOpenIDSessionTokens | null;
+  cookies?: Record<string, string | undefined> | null;
+}): OIDCTokens | undefined {
+  const sessionTokens = source.sessionTokens ?? undefined;
+  const cookies = source.cookies ?? {};
+  const accessToken = sessionTokens?.accessToken || cookies.openid_access_token;
+  if (!accessToken) {
+    return undefined;
+  }
+  const idToken = sessionTokens?.idToken || cookies.openid_id_token;
+  const expiresAt = sessionTokens?.accessTokenExpiresAt ?? decodeJwtExpirySeconds(accessToken);
+  return {
+    access_token: accessToken,
+    ...(idToken ? { id_token: idToken } : {}),
+    ...(expiresAt != null ? { expires_at: expiresAt } : {}),
+  };
+}
+
 export function createBearerAuthHeader(tokenInfo: OpenIDTokenInfo | null): string {
   if (!tokenInfo || !tokenInfo.accessToken) {
     return '';

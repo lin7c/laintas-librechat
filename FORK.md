@@ -33,6 +33,7 @@ and restricted, with upstream attribution preserved.
 | `8ac1dce` | fix(fork): ALLOW_SOCIAL_LOGIN=true in shipped env (gates OpenID strategy) |
 | _(this file's commit)_ | docs(fork): FORK.md |
 | _(badge commit)_ | feat(fork): model badges in the chat model selector |
+| _(this commit)_ | fix(fork): bridge OpenID login tokens so the Laintas header template resolves without token reuse |
 
 ## What was removed or disabled
 
@@ -144,6 +145,40 @@ OAuth/OIDC provider), with discovery at
   Authorization header is the credential (upstream behaviour: when the
   configured headers supply an Authorization, the apiKey fallback is not
   added — see `packages/api/src/endpoints/models.ts`).
+
+### Login-token bridge (why the header template resolves at all)
+
+Upstream, an OpenID login only keeps the IdP tokenset when
+`OPENID_REUSE_TOKENS` is on — and the reuse publication path requires an
+IdP refresh token end to end (publication throws without one in
+`sendOpenIDAuthResponse`; `setOpenIDAuthTokens` returns early and
+stores nothing; the durable session record is keyed by the refresh
+token). The Laintas IdP issues no refresh tokens (discovery:
+`grant_types_supported: [authorization_code]`, no `offline_access`), so
+reuse stays **off** for this deployment, and the standard login branch
+originally dropped the tokenset entirely — leaving
+`{{LIBRECHAT_OPENID_ACCESS_TOKEN}}` unresolvable, so model fetches fell
+back to the one-model seed list and chat carried no credential. This
+fork bridges the gap with two small pieces:
+
+- At login (`api/server/controllers/auth/oauth.js` →
+  `storeOpenIDLoginTokens` in `AuthService.js`, artifacts built by
+  `buildOpenIDLoginTokenArtifacts` in
+  `packages/api/src/auth/openid/loginTokens.ts`), the tokenset is
+  stored in the two places the request path already reads: the
+  express-session token shape, and the httpOnly
+  `openid_access_token` / `openid_id_token` cookies
+  `setOpenIDAuthTokens` itself uses as its no-session fallback (cookie
+  lifetime bounded by the access token's own expiry when known).
+- Per request, `requireJwtAuth` rebuilds `user.federatedTokens` from
+  those stores (`resolveStoredOpenIDTokens` in
+  `packages/api/src/utils/oidc.ts`, same precedence as
+  `openIdJwtStrategy`), so header resolution behaves exactly as on the
+  reuse path.
+
+Nothing extends the access token's lifetime: when it expires,
+resolution fails closed and the user signs in again — the standing S3
+limitation below, not a regression.
 
 ### The remaining server-side steps (not faked, not done here)
 

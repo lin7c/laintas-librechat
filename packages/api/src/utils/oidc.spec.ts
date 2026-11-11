@@ -5,6 +5,8 @@ import {
   isOpenIDTokenValid,
   processOpenIDPlaceholders,
   isAccessTokenJwt,
+  decodeJwtExpirySeconds,
+  resolveStoredOpenIDTokens,
 } from './oidc';
 
 describe('OpenID Token Utilities', () => {
@@ -848,6 +850,99 @@ describe('OpenID Token Utilities', () => {
       expect(isAccessTokenJwt(undefined, { aud: 'api://resource-app' }, audiences)).toBe(false);
       expect(isAccessTokenJwt('a.b.c', undefined, audiences)).toBe(false);
       expect(isAccessTokenJwt('not-a-jwt', { aud: 'client-id' }, audiences)).toBe(false);
+    });
+  });
+
+  describe('decodeJwtExpirySeconds', () => {
+    const makeToken = (payload: Record<string, unknown>) =>
+      ['header', Buffer.from(JSON.stringify(payload)).toString('base64'), 'sig'].join('.');
+
+    it('returns the exp claim of a JWT', () => {
+      expect(decodeJwtExpirySeconds(makeToken({ exp: 1893456000 }))).toBe(1893456000);
+    });
+
+    it('returns undefined for opaque tokens, missing exp, and empty input', () => {
+      expect(decodeJwtExpirySeconds('opaque-token-value')).toBeUndefined();
+      expect(decodeJwtExpirySeconds(makeToken({ sub: 'abc' }))).toBeUndefined();
+      expect(decodeJwtExpirySeconds(undefined)).toBeUndefined();
+      expect(decodeJwtExpirySeconds(null)).toBeUndefined();
+      expect(decodeJwtExpirySeconds('')).toBeUndefined();
+    });
+  });
+
+  describe('resolveStoredOpenIDTokens', () => {
+    const makeToken = (payload: Record<string, unknown>) =>
+      ['header', Buffer.from(JSON.stringify(payload)).toString('base64'), 'sig'].join('.');
+
+    it('prefers the session tokens and their recorded access-token expiry', () => {
+      const result = resolveStoredOpenIDTokens({
+        sessionTokens: {
+          accessToken: 'session-access',
+          idToken: 'session-id',
+          accessTokenExpiresAt: 2000,
+        },
+        cookies: { openid_access_token: 'cookie-access', openid_id_token: 'cookie-id' },
+      });
+      expect(result).toEqual({
+        access_token: 'session-access',
+        id_token: 'session-id',
+        expires_at: 2000,
+      });
+    });
+
+    it('falls back per field to the token cookies', () => {
+      const result = resolveStoredOpenIDTokens({
+        sessionTokens: { accessToken: 'session-access' },
+        cookies: { openid_id_token: 'cookie-id' },
+      });
+      expect(result).toEqual({ access_token: 'session-access', id_token: 'cookie-id' });
+    });
+
+    it('uses the cookies alone when the session holds no tokens', () => {
+      const result = resolveStoredOpenIDTokens({
+        sessionTokens: null,
+        cookies: { openid_access_token: 'cookie-access', openid_id_token: 'cookie-id' },
+      });
+      expect(result).toEqual({ access_token: 'cookie-access', id_token: 'cookie-id' });
+    });
+
+    it('decodes expires_at from a JWT access token when none was recorded', () => {
+      const accessToken = makeToken({ exp: 1893456000 });
+      const result = resolveStoredOpenIDTokens({ cookies: { openid_access_token: accessToken } });
+      expect(result).toEqual({ access_token: accessToken, expires_at: 1893456000 });
+    });
+
+    it('omits expires_at for an opaque access token', () => {
+      const result = resolveStoredOpenIDTokens({
+        cookies: { openid_access_token: 'opaque-token-value' },
+      });
+      expect(result).toEqual({ access_token: 'opaque-token-value' });
+    });
+
+    it('returns undefined when no access token is stored anywhere', () => {
+      expect(resolveStoredOpenIDTokens({})).toBeUndefined();
+      expect(resolveStoredOpenIDTokens({ sessionTokens: {}, cookies: {} })).toBeUndefined();
+      expect(
+        resolveStoredOpenIDTokens({ cookies: { openid_access_token: '', openid_id_token: 'id' } }),
+      ).toBeUndefined();
+    });
+
+    it('feeds extractOpenIDTokenInfo a valid snapshot', () => {
+      const stored = resolveStoredOpenIDTokens({
+        sessionTokens: {
+          accessToken: 'stored-access',
+          idToken: makeToken({ sub: 'sub-1', exp: 1893456000 }),
+          accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+        },
+      });
+      const user: Partial<IUser> = {
+        provider: 'openid',
+        openidId: 'sub-1',
+        federatedTokens: stored,
+      };
+      const info = extractOpenIDTokenInfo(user);
+      expect(info?.accessToken).toBe('stored-access');
+      expect(isOpenIDTokenValid(info)).toBe(true);
     });
   });
 });
