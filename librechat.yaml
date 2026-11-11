@@ -33,8 +33,11 @@ endpoints:
       headers:
         Authorization: 'Bearer {{LIBRECHAT_OPENID_ACCESS_TOKEN}}'
       models:
-        # The model list is fetched from https://laintas.com/v1/models,
-        # per user, with the header above.
+        # The authoritative model list is fetched from
+        # https://laintas.com/v1/models, per user, with the header above.
+        # The config schema requires a non-empty default list; this single
+        # seed entry is the fallback shown before the first fetch.
+        default: ['gpt-6-luna']
         fetch: true
       titleConvo: true
       titleModel: 'current_model'
