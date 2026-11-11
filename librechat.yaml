@@ -1,0 +1,41 @@
+# laintas-librechat — deployment configuration
+#
+# This fork ships exactly one model backend: the Laintas API, exposed as the
+# custom endpoint below. Built-in vendor endpoints (OpenAI, Anthropic,
+# Google, Azure, Bedrock, Assistants) are disabled in code, and any custom
+# endpoint other than "Laintas" is dropped when the server assembles the
+# endpoint config. See FORK.md for the full design.
+#
+# Configuration version (required)
+version: 1.3.17
+
+# Cache settings
+cache: true
+
+interface:
+  customWelcome: 'Welcome to laintas-librechat. Sign in with your Laintas account to start chatting.'
+
+endpoints:
+  custom:
+    # Laintas — OpenAI-compatible facade at https://laintas.com/v1.
+    #
+    # Authentication is per-user and rides on the sign-in session: the
+    # Authorization header template below is resolved by LibreChat, per
+    # request, to the access token the signed-in user received from the
+    # Laintas OpenID provider (accounts.laintas.com), and is used both for
+    # chat requests and for fetching the model list from /v1/models. The
+    # static apiKey value is only a non-empty placeholder required by the
+    # endpoint schema; it is never the credential used against Laintas
+    # (the resolved Authorization header takes precedence upstream).
+    - name: 'Laintas'
+      apiKey: 'laintas'
+      baseURL: 'https://laintas.com/v1'
+      headers:
+        Authorization: 'Bearer {{LIBRECHAT_OPENID_ACCESS_TOKEN}}'
+      models:
+        # The model list is fetched from https://laintas.com/v1/models,
+        # per user, with the header above.
+        fetch: true
+      titleConvo: true
+      titleModel: 'current_model'
+      modelDisplayLabel: 'Laintas'

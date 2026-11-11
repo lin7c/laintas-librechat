@@ -170,6 +170,24 @@ export function createEndpointsConfigService(deps: EndpointsConfigDeps): {
       };
     }
 
+    /**
+     * laintas-librechat fork: the Laintas custom endpoint is the only model
+     * backend. Drop every merged entry that did not come from the custom
+     * endpoint definitions — i.e. all built-in vendor endpoints, including
+     * any the vendor-specific blocks above re-added — keeping only the
+     * agents endpoint, which runs on the remaining model endpoints. See
+     * FORK.md.
+     */
+    for (const key of Object.keys(mergedConfig)) {
+      if (key === EModelEndpoint.agents) {
+        continue;
+      }
+      if (customEndpointsConfig && key in customEndpointsConfig) {
+        continue;
+      }
+      delete mergedConfig[key];
+    }
+
     return orderEndpointsConfig(mergedConfig as TEndpointsConfig);
   }
 

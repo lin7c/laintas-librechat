@@ -1,3 +1,10 @@
+# laintas-librechat fork note: this example file is kept as upstream
+# reference only. The operative configuration is librechat.yaml in this
+# repository root, which defines exactly one custom endpoint ("Laintas").
+# Custom endpoints with any other name are dropped when the server
+# assembles the endpoint config, and built-in vendor endpoints are
+# disabled in code. See FORK.md.
+
 # For more information, see the Configuration Guide:
 # https://www.librechat.ai/docs/configuration/librechat_yaml
 
