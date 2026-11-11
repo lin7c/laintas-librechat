@@ -55,6 +55,34 @@ export interface FetchModelsParams {
   userObject?: Partial<IUser>;
   /** Skip MODEL_QUERIES cache (e.g., for user-provided keys) */
   skipCache?: boolean;
+  /** Optional sink for per-model display badges carried by the response */
+  onModelBadges?: (badges: Record<string, string>) => void;
+}
+
+/** Badge metadata a Laintas-compatible /models response may carry per model. */
+export interface LaintasModelMeta {
+  tier?: string;
+  selfHosted?: boolean;
+  ownKey?: boolean;
+}
+
+/**
+ * Display badge for one model, mirroring the Laintas web picker: Laintas's
+ * own deployments are tagged `laintas-model`, models reached through a key
+ * the user activated are tagged `Activated`, and the rest carry their tier.
+ * Returns undefined when the model carries no badge metadata.
+ */
+export function laintasModelBadge(meta?: LaintasModelMeta | null): string | undefined {
+  if (!meta) {
+    return undefined;
+  }
+  if (meta.selfHosted) {
+    return 'laintas-model';
+  }
+  if (meta.ownKey) {
+    return 'Activated';
+  }
+  return meta.tier ? meta.tier : undefined;
 }
 
 function applyUserProvidedBaseURLProtection(
@@ -166,8 +194,10 @@ export async function fetchModels({
   headers,
   userObject,
   skipCache = false,
+  onModelBadges,
 }: FetchModelsParams): Promise<string[]> {
   let models: string[] = [];
+  const fetchedBadges: Record<string, string> = {};
   const baseURL = direct ? extractBaseURL(_baseURL ?? '') : _baseURL;
 
   if (!baseURL && !azure) {
@@ -198,6 +228,16 @@ export async function fetchModels({
   if (modelsCache && cacheKey) {
     const cachedModels = await modelsCache.get(cacheKey);
     if (cachedModels) {
+      /** Badges are cached beside the model list (see the fetch below), so
+       *  a cache hit reports the same badges a fresh fetch would. */
+      if (onModelBadges) {
+        const cachedBadges = (await modelsCache.get(`${cacheKey}:badges`)) as
+          | Record<string, string>
+          | undefined;
+        if (cachedBadges && Object.keys(cachedBadges).length > 0) {
+          onModelBadges(cachedBadges);
+        }
+      }
       if (createTokenConfig && tokenKey) {
         const tokenConfigBackfilled = await backfillTokenConfigFromModelCache(cacheKey, tokenKey);
         if (!tokenConfigBackfilled && isScopedTokenConfigKey(tokenKey)) {
@@ -299,6 +339,16 @@ export async function fetchModels({
       }
     }
     models = input.data.map((item: { id: string }) => item.id);
+    /** Badge metadata rides beside the id on each entry; ids stay untouched. */
+    for (const item of input.data as Array<{ id: string; laintas?: LaintasModelMeta }>) {
+      const badge = laintasModelBadge(item?.laintas);
+      if (badge) {
+        fetchedBadges[item.id] = badge;
+      }
+    }
+    if (onModelBadges && Object.keys(fetchedBadges).length > 0) {
+      onModelBadges(fetchedBadges);
+    }
   } catch (error) {
     const logMessage = `Failed to fetch models from ${azure ? 'Azure ' : ''}${name} API`;
     logAxiosError({ message: logMessage, error: error as Error });
@@ -306,6 +356,9 @@ export async function fetchModels({
 
   if (modelsCache && cacheKey && models.length > 0) {
     await modelsCache.set(cacheKey, models, Time.TWO_MINUTES);
+    if (Object.keys(fetchedBadges).length > 0) {
+      await modelsCache.set(`${cacheKey}:badges`, fetchedBadges, Time.TWO_MINUTES);
+    }
   }
 
   return models;

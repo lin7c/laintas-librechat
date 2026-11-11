@@ -13,6 +13,7 @@ import {
 import type {
   TEndpointsConfig,
   TAssistantsMap,
+  TModelBadges,
   TStartupConfig,
   Assistant,
   Agent,
@@ -210,6 +211,13 @@ export const useEndpoints = ({
           name: model,
           isGlobal: false,
         }));
+        /** Fork (laintas-librechat): badges ride on the /api/models payload
+         *  under `modelBadges`, beside the TModelsConfig entries. */
+        const modelBadges = (modelsQuery.data as { modelBadges?: TModelBadges } | undefined)
+          ?.modelBadges?.[ep];
+        if (modelBadges) {
+          result.modelBadges = modelBadges;
+        }
       }
 
       acc.push(result);

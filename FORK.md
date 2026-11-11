@@ -32,6 +32,7 @@ and restricted, with upstream attribution preserved.
 | `188e940` | fix(fork): seed Laintas endpoint models.default (schema requires min 1) |
 | `8ac1dce` | fix(fork): ALLOW_SOCIAL_LOGIN=true in shipped env (gates OpenID strategy) |
 | _(this file's commit)_ | docs(fork): FORK.md |
+| _(badge commit)_ | feat(fork): model badges in the chat model selector |
 
 ## What was removed or disabled
 
@@ -246,6 +247,53 @@ Upstream's Docker files (`docker-compose.yml`, `deploy-compose.yml`,
 fork's `.env` / `librechat.yaml`; the source run above is the path this
 fork's verification exercised.
 
+## Model badges
+
+The chat model selector shows a small badge beside each Laintas model,
+mirroring the Laintas AI web picker: `laintas-model` for Laintas's own
+deployments, `Activated` for models reached through a key the user
+activated, otherwise the model's tier (`T2`, `T4`, …). The precedence is
+the web picker's — self-hosted, then activated, then tier — and the
+signals are the ones the gateway already computes per model in its
+`/api/models` response: `modelCapabilities[id]` carries `selfHosted`,
+`ownKey` and `tier` (gateway `list_models`; the web side reads the same
+flags in `modelSource()`).
+
+Pipeline (additive throughout; model ids are never altered):
+
+- **Facade gap (patch owned by the facade task, NOT applied here).**
+  The gateway's capability data travels in the separate
+  `modelCapabilities` map, and the /v1 facade's `_models()` flattens
+  only `providers[].models[]` into `{id, object, created, owned_by}` —
+  the capabilities are dropped. The facade needs one additive change:
+  look each model id up in `body["modelCapabilities"]` and attach a
+  `laintas` object to its entry, e.g.
+  `{"tier": cap.get("tier") or "", "selfHosted": bool(cap.get("selfHosted")), "ownKey": bool(cap.get("ownKey"))}`.
+  Until that ships, no badges appear (the fork renders exactly as
+  upstream without the data).
+- `packages/api/src/endpoints/models.ts` — `fetchModels` reads
+  `item.laintas` from each fetched entry, reduces it to one badge
+  string via `laintasModelBadge()`, and reports the map through the
+  optional `onModelBadges` param. Badges are cached beside the model
+  list (`<cacheKey>:badges`) so cache hits report the same badges.
+- `packages/api/src/endpoints/config/models.ts` — `loadConfigModels`
+  collects the maps per fetch and attaches them to the models payload
+  under the extra top-level key `modelBadges` (type `TModelBadges` in
+  `packages/data-provider`). It is deliberately not folded into
+  `TModelsConfig`: consumers index that record by endpoint name, and
+  the whole-object iterations (token-config map, import defaults)
+  guard on `Array.isArray`, so the key is inert for upstream code. No
+  badge data → no key → payload identical to upstream.
+- Client — `useEndpoints` copies `modelBadges[endpoint]` onto the
+  selector's `Endpoint` object (the same pattern as `agentNames` /
+  `modelIcons`), and `EndpointModelItem` renders it as a small pill
+  beside the model name; search results reuse that row component, so
+  they are covered too.
+
+No config lever was added: the behavior is purely data-driven, and the
+absence of badge metadata reproduces upstream rendering exactly, so
+there is no new default to preserve.
+
 ## Verification
 
 Verified on the build VM on 2026-11-11 (Node 24, standalone MongoDB
@@ -297,6 +345,24 @@ installed and not required for boot):
   values. `npx tsc --noEmit` passes in `packages/api` and
   `packages/data-provider` (needs a raised heap on small VMs:
   `NODE_OPTIONS=--max-old-space-size=4608`).
+
+- Model badges (2026-11-11, stub run): with the packages rebuilt, the
+  server was booted against a stub facade emitting the patched
+  `/v1/models` shape (test-only config pointing the Laintas endpoint
+  at the stub; removed after the run) and a registered test user.
+  `GET /api/models` returned
+  `"Laintas": ["gpt-6-luna", "qwen3.8-27b", "key/deepseek-flash", "plain-model"]`
+  plus `"modelBadges": {"Laintas": {"gpt-6-luna": "T2",
+  "qwen3.8-27b": "laintas-model", "key/deepseek-flash": "Activated"}}`
+  — tier, self-hosted-over-tier, and activated-over-tier precedence
+  all as designed, the badge-less model absent from the map, ids
+  untouched. A second call (models-cache hit) returned identical
+  badges. Against a badge-less stub payload the response carried no
+  `modelBadges` key at all. Tests: `packages/api` models specs 69/69
+  (7 new badge tests), client `EndpointModelItem` 6/6 (2 new badge
+  tests), `npx tsc --noEmit` clean in `packages/api`,
+  `packages/data-provider`, and `client`. The selector row itself was
+  verified through its component test; no browser render was made.
 
 Not verified (needs a real deployment): the full login round trip
 (blocked on S1), a live chat completion billed to a Laintas account

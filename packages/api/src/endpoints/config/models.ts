@@ -6,7 +6,7 @@ import {
   extractEnvVariable,
   normalizeEndpointName,
 } from 'librechat-data-provider';
-import type { TModelsConfig, TEndpoint } from 'librechat-data-provider';
+import type { TModelsConfig, TModelBadges, TEndpoint } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
 import type { ServerRequest, GetUserKeyValuesFunction, UserKeyValues } from '~/types';
 import type { FetchModelsParams } from '~/endpoints/models';
@@ -91,6 +91,8 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
     );
 
     const fetchPromisesMap: Record<string, Promise<string[]>> = {};
+    /** Display badges reported by each fetch, keyed like fetchPromisesMap */
+    const badgesByFetchKey: Record<string, Record<string, string>> = {};
     const uniqueKeyToEndpointsMap: Record<string, string[]> = {};
     /** tokenKey the deduped fetch cached its token config under, so siblings
      *  sharing the fetch can be backfilled with the same config afterward */
@@ -191,6 +193,9 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
             direct: endpoint.directEndpoint,
             userIdQuery: models.userIdQuery,
             tokenKey,
+            onModelBadges: (badges) => {
+              badgesByFetchKey[uniqueKey] = badges;
+            },
           });
         }
         uniqueKeyToEndpointsMap[uniqueKey] = uniqueKeyToEndpointsMap[uniqueKey] || [];
@@ -236,6 +241,9 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
                 skipCache: true,
                 /** Fetched with the user's key/URL — always user-scoped */
                 tokenKey: getTokenConfigKey(endpoint, name, req.user?.id ?? '', tenantId),
+                onModelBadges: (badges) => {
+                  badgesByFetchKey[userFetchKey] = badges;
+                },
               });
             })();
           uniqueKeyToEndpointsMap[userFetchKey] = uniqueKeyToEndpointsMap[userFetchKey] || [];
@@ -269,6 +277,14 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
           typeof m === 'string' ? m : m.name,
         );
         modelsConfig[name] = !modelData?.length ? defaults : modelData;
+        /** Badges describe the fetched list; the defaults fallback has none.
+         *  They ride on the payload under `modelBadges` (see TModelBadges);
+         *  TModelsConfig itself stays a plain endpoint -> ids record. */
+        const badges = badgesByFetchKey[currentKey];
+        if (modelData?.length && badges && Object.keys(badges).length > 0) {
+          const holder = modelsConfig as TModelsConfig & { modelBadges?: TModelBadges };
+          (holder.modelBadges ??= {})[name] = badges;
+        }
       }
 
       /** A shared fetch caches token config under one endpoint's tokenKey;

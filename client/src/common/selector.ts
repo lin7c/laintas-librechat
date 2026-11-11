@@ -10,6 +10,8 @@ export interface Endpoint {
   agentNames?: Record<string, string>;
   assistantNames?: Record<string, string>;
   modelIcons?: Record<string, string | undefined>;
+  /** Fork (laintas-librechat): per-model display badges from /api/models. */
+  modelBadges?: Record<string, string>;
   showMarketplace?: boolean;
   searchAliases?: string[];
 }

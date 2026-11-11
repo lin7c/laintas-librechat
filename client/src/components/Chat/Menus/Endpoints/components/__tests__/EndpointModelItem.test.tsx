@@ -92,4 +92,23 @@ describe('EndpointModelItem', () => {
     const menuItem = screen.getByRole('menuitem');
     expect(menuItem).not.toHaveAttribute('aria-selected');
   });
+
+  it('renders the model badge when the endpoint carries one for the model', () => {
+    mockSelectedValues = { endpoint: 'anthropic', model: 'claude-sonnet-4-5', modelSpec: '' };
+    renderItem({
+      endpoint: { ...baseEndpoint, modelBadges: { 'claude-opus-4-6': 'T2' } },
+    });
+
+    expect(screen.getByText('T2')).toBeInTheDocument();
+  });
+
+  it('renders no badge when the endpoint carries none for the model', () => {
+    mockSelectedValues = { endpoint: 'anthropic', model: 'claude-sonnet-4-5', modelSpec: '' };
+    renderItem();
+
+    expect(screen.getByText('claude-opus-4-6')).toBeInTheDocument();
+    expect(screen.queryByText('T2')).not.toBeInTheDocument();
+    expect(screen.queryByText('laintas-model')).not.toBeInTheDocument();
+    expect(screen.queryByText('Activated')).not.toBeInTheDocument();
+  });
 });

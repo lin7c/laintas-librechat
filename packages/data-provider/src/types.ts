@@ -698,6 +698,18 @@ export type TEndpointsConfig =
 
 export type TModelsConfig = Record<string, string[]>;
 
+/**
+ * Fork (laintas-librechat): per-endpoint, per-model display badges for the
+ * model selector (endpoint name -> model id -> badge text). The map rides
+ * on the GET /api/models payload under the extra top-level key
+ * `modelBadges`, beside the TModelsConfig entries. It is deliberately not
+ * part of TModelsConfig: folding a non-array value into that index type
+ * would poison every consumer. The key is inert for upstream consumers —
+ * they index the config by endpoint name, and the whole-object iterations
+ * (token-config map, import defaults) guard on `Array.isArray`.
+ */
+export type TModelBadges = Record<string, Record<string, string>>;
+
 /** Server-resolved context window and pricing for one model. Rates are USD per 1M tokens. */
 export type TModelTokenomics = {
   context?: number;

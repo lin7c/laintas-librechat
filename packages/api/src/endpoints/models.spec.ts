@@ -3,6 +3,7 @@ import { Time, EModelEndpoint, defaultModels, AuthType } from 'librechat-data-pr
 import {
   fetchModels,
   splitAndTrim,
+  laintasModelBadge,
   getOpenAIModels,
   getGoogleModels,
   getBedrockModels,
@@ -1102,5 +1103,94 @@ describe('fetchModels caching behavior', () => {
 
     expect(mockCacheGet).toHaveBeenCalled();
     expect(mockCacheSet).toHaveBeenCalled();
+  });
+});
+
+describe('laintasModelBadge', () => {
+  it('prefers the self-hosted tag over tier and activation', () => {
+    expect(laintasModelBadge({ selfHosted: true, ownKey: true, tier: 'T3' })).toBe('laintas-model');
+  });
+
+  it('prefers Activated over the tier', () => {
+    expect(laintasModelBadge({ ownKey: true, tier: 'T3' })).toBe('Activated');
+  });
+
+  it('falls back to the tier', () => {
+    expect(laintasModelBadge({ tier: 'T2' })).toBe('T2');
+  });
+
+  it('returns undefined without badge metadata', () => {
+    expect(laintasModelBadge(undefined)).toBeUndefined();
+    expect(laintasModelBadge(null)).toBeUndefined();
+    expect(laintasModelBadge({})).toBeUndefined();
+    expect(laintasModelBadge({ tier: '' })).toBeUndefined();
+  });
+});
+
+describe('fetchModels Laintas badges', () => {
+  it('reports per-model badges via onModelBadges and keeps ids untouched', async () => {
+    mockedAxios.get.mockResolvedValueOnce({
+      data: {
+        data: [
+          { id: 'gpt-6-luna', laintas: { tier: 'T2' } },
+          { id: 'qwen3.8-27b', laintas: { tier: '', selfHosted: true } },
+          { id: 'key/deepseek-flash', laintas: { tier: 'T3', ownKey: true } },
+          { id: 'plain-model' },
+        ],
+      },
+    });
+    const onModelBadges = jest.fn();
+
+    const models = await fetchModels({
+      user: 'user123',
+      apiKey: 'testApiKey',
+      baseURL: 'https://api.test.com',
+      name: 'Laintas',
+      onModelBadges,
+    });
+
+    expect(models).toEqual(['gpt-6-luna', 'qwen3.8-27b', 'key/deepseek-flash', 'plain-model']);
+    expect(onModelBadges).toHaveBeenCalledTimes(1);
+    expect(onModelBadges).toHaveBeenCalledWith({
+      'gpt-6-luna': 'T2',
+      'qwen3.8-27b': 'laintas-model',
+      'key/deepseek-flash': 'Activated',
+    });
+  });
+
+  it('does not call onModelBadges when no entry carries badge metadata', async () => {
+    mockedAxios.get.mockResolvedValueOnce({
+      data: { data: [{ id: 'model-1' }, { id: 'model-2' }] },
+    });
+    const onModelBadges = jest.fn();
+
+    const models = await fetchModels({
+      user: 'user123',
+      apiKey: 'testApiKey',
+      baseURL: 'https://api.test.com',
+      name: 'Laintas',
+      onModelBadges,
+    });
+
+    expect(models).toEqual(['model-1', 'model-2']);
+    expect(onModelBadges).not.toHaveBeenCalled();
+  });
+
+  it('replays cached badges on a models-cache hit', async () => {
+    mockCacheGet.mockImplementation(async (key: string) =>
+      key.endsWith(':badges') ? { 'model-1': 'T2' } : ['model-1'],
+    );
+    const onModelBadges = jest.fn();
+
+    const models = await fetchModels({
+      user: 'user123',
+      apiKey: 'testApiKey',
+      baseURL: 'https://api.test.com',
+      name: 'Laintas',
+      onModelBadges,
+    });
+
+    expect(models).toEqual(['model-1']);
+    expect(onModelBadges).toHaveBeenCalledWith({ 'model-1': 'T2' });
   });
 });

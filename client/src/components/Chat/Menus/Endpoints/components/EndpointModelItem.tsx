@@ -51,6 +51,7 @@ function EndpointModelItemComponent({
 
   let modelName = modelId;
   const avatarUrl = endpoint?.modelIcons?.[modelId ?? ''] || null;
+  const badge = modelId ? endpoint?.modelBadges?.[modelId] : undefined;
 
   // Use custom names if available
   if (endpoint && modelId && isAgentsEndpoint(endpoint.value) && endpoint.agentNames?.[modelId]) {
@@ -111,6 +112,11 @@ function EndpointModelItemComponent({
       <div className="flex w-full min-w-0 items-center gap-2 px-1 py-1">
         {renderAvatar()}
         <span className="truncate">{modelName}</span>
+        {badge && (
+          <span className="shrink-0 rounded-full bg-surface-secondary px-1.5 py-0.5 text-[11px] font-medium leading-none text-text-secondary">
+            {badge}
+          </span>
+        )}
         {isGlobal && <EarthIcon className="ml-1 size-4 text-surface-submit" />}
       </div>
       <button
