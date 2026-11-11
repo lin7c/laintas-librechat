@@ -1,0 +1,69 @@
+name: Release
+
+# Publishes laintas-librechat two ways on every version tag:
+#   1. a Docker image built from the repo's Dockerfile, pushed to GHCR as
+#      ghcr.io/lin7c/laintas-librechat:<tag> and :latest
+#   2. a source tarball + SHA-256 checksum attached to the GitHub Release
+# Self-contained: uses only the default GITHUB_TOKEN (packages: write below).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v1.0.0)"
+        required: true
+        default: "v1.0.0"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: ver
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build source tarball
+        run: |
+          NAME="laintas-librechat-${{ steps.ver.outputs.tag }}"
+          git archive --format=tar.gz --prefix="$NAME/" -o "$NAME.tar.gz" HEAD
+          sha256sum "$NAME.tar.gz" > checksums.txt
+          ls -la "$NAME.tar.gz" checksums.txt
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: <redacted>
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/lin7c/laintas-librechat:${{ steps.ver.outputs.tag }}
+            ghcr.io/lin7c/laintas-librechat:latest
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          files: |
+            laintas-librechat-${{ steps.ver.outputs.tag }}.tar.gz
+            checksums.txt
+          fail_on_unmatched_files: true
