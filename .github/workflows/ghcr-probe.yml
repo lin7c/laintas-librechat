@@ -1,0 +1,25 @@
+name: GHCR Probe
+
+# Temporary diagnostic: isolates the GHCR login used by release.yml.
+# Remove once the release workflow publishes successfully.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Inspect target image (expect not-found after a good login)
+        run: docker buildx imagetools inspect ghcr.io/lin7c/laintas-librechat:latest || true
