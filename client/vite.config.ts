@@ -155,7 +155,7 @@ export default defineConfig(({ command }) => ({
         short_name: 'laintas-librechat',
         display: 'standalone',
         background_color: '#000000',
-        theme_color: '#2563eb',
+        theme_color: '#1d3b2a',
         icons: [
           {
             src: 'assets/favicon-32x32.png',

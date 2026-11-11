@@ -1,8 +1,6 @@
 <svg width="512" height="512" version="1.1" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <!-- laintas-librechat placeholder mark: a plain "L" tile.
-       The final Laintas logo asset is supplied by the product owner;
-       this file only removes the upstream LibreChat branding from the
-       auth and shell surfaces. See FORK.md. -->
-  <rect x="32" y="32" width="448" height="448" rx="96" fill="#2563eb"/>
-  <path d="M176 128 h64 v224 h160 v64 H176 z" fill="#ffffff"/>
+  <!-- laintas-librechat logo: the Laintas Everything asterisk
+       (asterisk bars in cream, amber core) on a deep-green tile. -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="#1d3b2a"/>
+  <g transform="translate(107.2 107.2) scale(6.2)"><g transform="skewX(-6)"><g stroke="#f4f6ee" stroke-width="5.4" stroke-linecap="round"><line x1="25" y1="8" x2="25" y2="40"/><line x1="12.2" y1="15.6" x2="37.8" y2="32.4"/><line x1="37.8" y1="15.6" x2="12.2" y2="32.4"/></g></g><circle cx="24" cy="24" r="5.2" fill="#ffc24d"/></g>
 </svg>
